@@ -73,6 +73,9 @@ The layout is taken from androidx/media 1.11.1
 - **An encrypted index is named as such** and no key is invented for its items.
 - **An audio-only MP4 is audio**, whatever its brand says, read from the track's own
   handler (`hdlr`).
+- **`mp4_layout` tells what kind of MP4 a joined item is** from its box headers: a
+  movie header on its own (a DASH initialization segment cached alone, which holds no
+  samples and cannot play), fragments, or a file that stops inside its last box.
 
 ## Putting video and audio together
 

@@ -299,3 +299,21 @@ def test_older_pieces_spread_over_numbered_subfolders_are_one_cache(tmp_path):
 
 def test_a_raw_userdata_partition_names_the_app():
     assert exoprobe.app_folder("SamsungS20/Volumes/userdata/data/com.pinterest/cache/video") == "com.pinterest"
+
+
+def test_mp4_layout_names_an_init_segment_a_fragmented_movie_and_a_cut_file(tmp_path):
+    init = (FIX / "init-0.mp4").read_bytes()
+    whole = b"".join((FIX / n).read_bytes() for n in VIDEO)
+    prog = (Path(__file__).parent / "fixtures" / "mux" / "video.mp4").read_bytes()
+    cases = {"init.mp4": init, "whole.mp4": whole, "prog.mp4": prog, "cut.mp4": prog[:-100],
+             "seg.m4s": (FIX / "seg-0-1.m4s").read_bytes(), "text.txt": b"not a box at all"}
+    got = {}
+    for name, data in cases.items():
+        (tmp_path / name).write_bytes(data)
+        got[name] = exoprobe.mp4_layout(tmp_path / name)
+    assert got["init.mp4"] == {"moov": True, "mvex": True, "moof": False, "cut": False}
+    assert got["whole.mp4"] == {"moov": True, "mvex": True, "moof": True, "cut": False}
+    assert got["prog.mp4"] == {"moov": True, "mvex": False, "moof": False, "cut": False}
+    assert got["cut.mp4"]["cut"] is True
+    assert got["seg.m4s"]["moof"] is True and got["seg.m4s"]["moov"] is False
+    assert got["text.txt"] is None

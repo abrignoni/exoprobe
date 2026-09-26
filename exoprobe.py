@@ -69,7 +69,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable, NamedTuple
 from urllib.parse import urljoin
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 # ---- names ------------------------------------------------------------------
 
@@ -524,6 +524,54 @@ def file_handlers(path) -> list[str]:
     except (OSError, struct.error):
         pass
     return []
+
+
+# Box types that can open an ISO-BMFF file (ISO/IEC 14496-12 top-level boxes).
+_FIRST_BOXES = {b"ftyp", b"styp", b"moov", b"moof", b"mdat", b"free", b"skip", b"wide",
+                b"sidx", b"pdin", b"meta", b"uuid", b"emsg", b"prft"}
+
+
+def mp4_layout(path) -> dict | None:
+    """The top-level shape of an ISO-BMFF (MP4) file, read from its box headers only:
+    ``moov`` (a movie header is present), ``mvex`` (that header declares fragments, as
+    a DASH initialization segment does), ``moof`` (a fragment follows) and ``cut`` (a
+    top-level box runs past the end of the file, so the file stops inside it). None
+    when the file does not open with a top-level box type.
+
+    A ``moov`` with ``mvex`` and no ``moof`` is an initialization segment on its own:
+    it describes a track and carries no samples, so nothing in it can play."""
+    out = {"moov": False, "mvex": False, "moof": False, "cut": False}
+    try:
+        with open(path, "rb") as fh:
+            size = fh.seek(0, 2)
+            pos = 0
+            while pos + 8 <= size:
+                fh.seek(pos)
+                head = fh.read(16)
+                box, typ = struct.unpack(">I4s", head[:8])
+                hdr = 8
+                if box == 1 and len(head) == 16:
+                    box, hdr = struct.unpack(">Q", head[8:16])[0], 16
+                elif box == 0:
+                    box = size - pos
+                if pos == 0 and typ not in _FIRST_BOXES:
+                    return None
+                if box < hdr:
+                    return {**out, "cut": True}
+                if typ == b"moov":
+                    out["moov"] = True
+                    if box <= MAX_MOOV_BYTES:
+                        fh.seek(pos + hdr)
+                        body = fh.read(box - hdr)
+                        out["mvex"] = any(t == b"mvex" for t, _s, _e in _scan_boxes(body, 0, len(body)))
+                elif typ == b"moof":
+                    out["moof"] = True
+                if pos + box > size:
+                    out["cut"] = True
+                pos += box
+    except (OSError, struct.error):
+        return None
+    return out
 
 
 def is_audio_stream(stream: dict) -> bool:
