@@ -280,3 +280,22 @@ def test_of_two_pieces_at_one_position_the_last_touched_is_used(tmp_path):
     (r,) = exoprobe.rejoin(_one(exoprobe.find_caches(_write(tmp_path / "ev", files))), tmp_path / "out")
     assert (tmp_path / "out" / r["file"]).read_bytes() == b"newer"
     assert r["pieces_joined"] == 1 and r["pieces_left_out"] == 0
+
+
+def test_older_pieces_spread_over_numbered_subfolders_are_one_cache(tmp_path):
+    """Instagram (samsungs20_a13) writes v2 pieces in subfolders numbered 0 to 28, one
+    item's pieces in several of them; they are one cache and join as one item."""
+    key = "3788992813690909712_5857222413.null.1376288957371955v"
+    data = bytes(range(256)) * 40
+    base = "data/data/com.example.player/cache/videocache"
+    files = {f"{base}/1/{key}.0.{TS}.v2.exo": data[:4000],
+             f"{base}/10/{key}.4000.{TS + 1}.v2.exo": data[4000:7000],
+             f"{base}/14/{key}.7000.{TS + 2}.v2.exo": data[7000:]}
+    c = _one(exoprobe.find_caches(_write(tmp_path / "ev", files)))
+    assert c.root == base
+    (r,) = exoprobe.rejoin(c, tmp_path / "out")
+    assert (tmp_path / "out" / r["file"]).read_bytes() == data and r["pieces_joined"] == 3
+
+
+def test_a_raw_userdata_partition_names_the_app():
+    assert exoprobe.app_folder("SamsungS20/Volumes/userdata/data/com.pinterest/cache/video") == "com.pinterest"

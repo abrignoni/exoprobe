@@ -69,7 +69,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable, NamedTuple
 from urllib.parse import urljoin
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # ---- names ------------------------------------------------------------------
 
@@ -137,18 +137,23 @@ def parse_piece_name(name: str) -> PieceName | None:
 
 
 def cache_root(logical: str) -> str:
-    """The cache folder a file belongs to: a v3 piece sits in ``<cache>/<0-9>/``; the
-    index, the uid file and older pieces sit in ``<cache>`` itself."""
+    """The cache folder a file belongs to. A v3 piece sits in ``<cache>/<0-9>/``; the
+    index, the uid file and ExoPlayer's own older pieces sit in ``<cache>`` itself.
+    A piece of any version in a folder named only by digits belongs to the folder
+    above it: Instagram writes v2 pieces in subfolders 0 to 28 of its videocache
+    folder, one item's pieces in several of them. On the Android images tested, all
+    1,461 older pieces in a digit-named folder were Instagram's, and no v3 piece sat
+    in a folder named by more than one digit."""
     logical = str(logical).replace("\\", "/")
     parent = PurePosixPath(logical).parent
-    if PIECE_V3.match(basename(logical)) and re.fullmatch(r"\d", parent.name):
+    if is_piece_name(logical) and re.fullmatch(r"\d+", parent.name):
         parent = parent.parent
     return str(parent)
 
 
 def app_folder(root: str) -> str | None:
     """The Android package whose folder holds the cache, read from the path."""
-    m = re.search(r"(?:^|/)(?:data/data|data/user(?:_de)?/\d+|Android/data)/([^/]+)/",
+    m = re.search(r"(?:^|/)(?:data/data|data/user(?:_de)?/\d+|Android/data|userdata/data)/([^/]+)/",
                   str(root).replace("\\", "/") + "/")
     return m.group(1) if m else None
 
