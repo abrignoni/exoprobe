@@ -32,7 +32,10 @@ exoprobe mux    video.mp4 audio.m4a [more.m4a ...] -o combined.mp4
 `rejoin` writes each cache into its own subfolder of `out/` and records, for every
 item, which index named it, how many pieces were joined, how many bytes against the
 length the index recorded, whether the join is complete, and the last-touched time
-from the piece names.
+from the piece names. That time is when the piece was written, or later read again
+when the app's evictor asks ExoPlayer to track reads; a cache that also keeps an
+`ExoPlayerCacheFileMetadata` table records later reads there and leaves the name
+alone (`SimpleCache.touchSpan`).
 
 ## What it reads
 
@@ -64,8 +67,9 @@ The layout is taken from androidx/media 1.11.1
 - **An item with no piece at position 0 is recorded, not written.** Nothing in it can
   open.
 - **Two pieces at one position:** the one with the later last-touch time is used.
-  ExoPlayer renames a piece to its new time when it touches it
-  (`CachedContent.setLastTouchTimestamp`), so a live cache holds only one.
+  When ExoPlayer touches a piece it renames the file to the new time
+  (`CachedContent.setLastTouchTimestamp`) rather than adding one, so a live cache
+  holds only one.
 - **An encrypted index is named as such** and no key is invented for its items.
 - **An audio-only MP4 is audio**, whatever its brand says, read from the track's own
   handler (`hdlr`).
