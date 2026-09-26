@@ -1,0 +1,4 @@
+*.mp4 -text
+*.m4a -text
+*.m4s -text
+*.mpd text eol=lf

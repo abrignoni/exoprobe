@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# Evidence never belongs in this repository. The tests build their caches at run
+# time from the generated media under tests/fixtures, which carries no evidence.
+*.exo
+*.exi
+*.exi.bak
+*.uid
+exoplayer_internal.db*
