@@ -116,6 +116,18 @@ pointing at the bytes it pointed at before.
   the file. Encrypted media tracks (a `sinf` box) are not combined.
 - It reads only what an extraction holds: a video evicted from the cache is gone.
 
+## Standalone executables
+
+Each release carries `exoprobe` built as a single executable with PyInstaller on
+Python 3.14, for Windows x64 and arm64, macOS on Apple silicon and Intel, and Linux x64
+and arm64, beside `exoprobe.py` itself. The workflow that builds them
+(`.github/workflows/build-executables.yml`) runs each executable on caches built the way
+ExoPlayer writes them (a DASH stream, an HLS stream with two audio renditions, and an
+item indexed in `exoplayer_internal.db`) and on the mux fixtures, and requires it to
+write the same bytes as `python exoprobe.py` for `scan`, `rejoin` and `mux` before it is
+packaged with `SHA256SUMS.txt` and a README. The executables are not code signed; the
+README inside each archive says what Windows SmartScreen and macOS Gatekeeper will ask.
+
 ## Licence
 
 MIT. See `LICENSE`.
