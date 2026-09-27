@@ -9,9 +9,9 @@ library most Android apps stream with, and it caches what they play. A cached vi
 is not one file: it is split into pieces named for the byte offset they start at,
 and the address the video came from is kept in a separate index. Opening a piece on
 its own gives a truncated file at best. exoprobe reads the index, joins each item's
-pieces back into the file the app downloaded, joins a DASH stream's segments in the
-order its cached manifest lists them, and can put a DASH video and its audio into one
-playable MP4 without re-encoding anything.
+pieces back into the file the app downloaded, joins a DASH or HLS stream's segments in
+the order its cached manifest or playlist lists them, and can put a video and its audio
+into one playable MP4 without re-encoding anything.
 
 ```python
 import exoprobe
@@ -54,11 +54,20 @@ alone (`SimpleCache.touchSpan`).
   to the first one missing or incomplete. Addresses that merely look alike are never
   joined. A stream fetched as one file by byte range (SegmentBase) is already whole,
   and is paired with the other streams its manifest lists.
+- **HLS playlists** cached beside the segments, the same way: a media playlist's
+  initialization segment (`#EXT-X-MAP`) and then its segments in order, every URI
+  resolved against the playlist's own address as ExoPlayer requests it. A master
+  playlist ties a video variant to its audio renditions by the variant's AUDIO group,
+  and only that group's audio is combined with it. A playlist with encrypted segments
+  (`#EXT-X-KEY` with a method other than NONE) or byte ranges is not joined, and a
+  playlist with no initialization segment is joined only when its segments are MPEG
+  transport streams, so a subtitles playlist (WebVTT) is left as it is.
 
 The layout is taken from androidx/media 1.11.1
 ([8c6678b6](https://github.com/androidx/media/tree/8c6678b657ede1e7883fc164ef73ed483c7796c3/libraries/datasource/src/main/java/androidx/media3/datasource/cache)),
-`SimpleCacheSpan`, `CachedContentIndex`, `DefaultContentMetadata`, and for DASH
-`DashManifestParser` and `DashUtil.resolveCacheKey`.
+`SimpleCacheSpan`, `CachedContentIndex`, `DefaultContentMetadata`, for DASH
+`DashManifestParser` and `DashUtil.resolveCacheKey`, and for HLS `HlsPlaylistParser` and
+`HlsMediaChunk`.
 
 ## Behaviours worth knowing
 
@@ -79,10 +88,11 @@ The layout is taken from androidx/media 1.11.1
 
 ## Putting video and audio together
 
-DASH serves video and sound as separate streams, so the cache holds a silent video
-and a picture-less audio track. `mux` rewrites the boxes that describe the tracks
+DASH, and HLS with separate audio renditions, serve video and sound as separate
+streams, so the cache holds a silent video and a picture-less audio track. `mux` rewrites the boxes that describe the tracks
 (ISO/IEC 14496-12) into one header and copies every sample's bytes unchanged, for
-fragmented MP4 (DASH) and for ordinary MP4 alike.
+fragmented MP4 (DASH and HLS) and for ordinary MP4 alike. An HLS video that already
+carries its own sound, as a transport stream does, is not combined.
 
 When a manifest lists more than one cached audio stream, two languages say, picking
 one would be a guess, so every one goes in as its own track in the manifest's order.
@@ -101,8 +111,7 @@ pointing at the bytes it pointed at before.
 ## What it does not do
 
 - A DASH stream described by a `SegmentTemplate` is not joined.
-- HLS video is cached one segment per item; each is joined on its own, as long as the
-  segment, and segments are not put together.
+- A transport-stream HLS video is joined into one `.ts` file but not converted to MP4.
 - An encrypted index (`.exi` flag 1) cannot be read without its key, which is not in
   the file. Encrypted media tracks (a `sinf` box) are not combined.
 - It reads only what an extraction holds: a video evicted from the cache is gone.

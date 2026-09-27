@@ -174,11 +174,11 @@ def test_a_dash_stream_is_joined_from_its_manifest_and_combined(tmp_path):
     out = tmp_path / "out"
     recs = exoprobe.rejoin(_one(exoprobe.find_caches(src)), out)
     by = {r["file"]: r for r in recs if r["status"] == "written"}
-    video = next(r for r in by.values() if r.get("dash") and r["kind"] == "video")
-    audio = next(r for r in by.values() if r.get("dash") and r["kind"] == "audio")
+    video = next(r for r in by.values() if r.get("stream") and r["kind"] == "video")
+    audio = next(r for r in by.values() if r.get("stream") and r["kind"] == "audio")
     assert (out / video["file"]).read_bytes() == b"".join((FIX / n).read_bytes() for n in VIDEO)
     assert (out / audio["file"]).read_bytes() == b"".join((FIX / n).read_bytes() for n in AUDIO)
-    assert video["dash"]["segments_joined"] == 3 and video["key"] == BASE + "stream.mpd"
+    assert video["stream"]["segments_joined"] == 3 and video["stream"]["format"] == "DASH" and video["key"] == BASE + "stream.mpd"
     (av,) = [r for r in by.values() if r.get("combined")]
     assert exoprobe.file_handlers(out / av["file"]) == ["vide", "soun"]
     assert av["combined"]["audio_tracks"] == [{"file": audio["file"], "bandwidth": "32000",
@@ -317,3 +317,112 @@ def test_mp4_layout_names_an_init_segment_a_fragmented_movie_and_a_cut_file(tmp_
     assert got["cut.mp4"]["cut"] is True
     assert got["seg.m4s"]["moof"] is True and got["seg.m4s"]["moov"] is False
     assert got["text.txt"] is None
+
+
+HLS = Path(__file__).parent / "fixtures" / "hls"
+HBASE = "https://video.example.net/amplify_video/42/pl/"
+
+
+def _hls_items(*, drop: tuple = (), audio_group: str = "aud", extra_lines: str = "") -> dict:
+    """A master playlist with one video variant and English and Spanish audio renditions,
+    and a media playlist for each, over the fMP4 segments in fixtures/dash (RFC 8216
+    allows fMP4 segments with #EXT-X-MAP)."""
+    def media(init, segs):
+        body = f"#EXTM3U\n#EXT-X-VERSION:7\n{extra_lines}#EXT-X-MAP:URI=\"{init}\"\n"
+        return (body + "".join(f"#EXTINF:1.0,\n{u}\n" for u in segs) + "#EXT-X-ENDLIST\n").encode()
+    master = ("#EXTM3U\n"
+              f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="{audio_group}",NAME="English",LANGUAGE="en",URI="a/en.m3u8"\n'
+              f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="{audio_group}",NAME="Spanish",LANGUAGE="es",URI="a/es.m3u8"\n'
+              '#EXT-X-STREAM-INF:BANDWIDTH=40000,RESOLUTION=160x120,CODECS="avc1.64000a,mp4a.40.2",AUDIO="aud"\n'
+              "v/video.m3u8\n").encode()
+    items = {HBASE + "master.m3u8": master,
+             HBASE + "v/video.m3u8": media("init.mp4", ["s1.m4s", "s2.m4s", "s3.m4s"]),
+             HBASE + "a/en.m3u8": media("init.mp4", ["s1.m4s", "s2.m4s", "s3.m4s", "s4.m4s"]),
+             HBASE + "a/es.m3u8": media("init.mp4", ["s1.m4s", "s2.m4s", "s3.m4s", "s4.m4s"])}
+    for n, f in zip(["init.mp4", "s1.m4s", "s2.m4s", "s3.m4s"], VIDEO):
+        items[HBASE + "v/" + n] = (FIX / f).read_bytes()
+    for lang in ("en", "es"):
+        for n, f in zip(["init.mp4", "s1.m4s", "s2.m4s", "s3.m4s", "s4.m4s"], AUDIO):
+            items[HBASE + f"a/{lang}/" + n] = (FIX / f).read_bytes()
+    for lang in ("en", "es"):     # each rendition's playlist names its own folder
+        items[HBASE + f"a/{lang}.m3u8"] = items[HBASE + f"a/{lang}.m3u8"].replace(b"init.mp4", f"{lang}/init.mp4".encode()).replace(b"\ns", f"\n{lang}/s".encode())
+    for k in drop:
+        items.pop(HBASE + k)
+    return items
+
+
+def test_an_hls_stream_is_joined_from_its_playlist_and_combined_with_its_audio_group(tmp_path):
+    src = _write(tmp_path / "ev", _v3(_hls_items()))
+    out = tmp_path / "out"
+    recs = exoprobe.rejoin(_one(exoprobe.find_caches(src)), out)
+    streams = [r for r in recs if r.get("stream")]
+    assert {(r["kind"], r["stream"]["format"], r["stream"]["segments_joined"]) for r in streams} == \
+        {("video", "HLS", 3), ("audio", "HLS", 4)} and len(streams) == 3
+    video = next(r for r in streams if r["kind"] == "video")
+    assert (out / video["file"]).read_bytes() == b"".join((FIX / n).read_bytes() for n in VIDEO)
+    assert video["key"] == HBASE + "master.m3u8" and video["stream"]["representation"]["width"] == "160"
+    (av,) = [r for r in recs if r.get("combined")]
+    assert [t["lang"] for t in av["combined"]["audio_tracks"]] == ["en", "es"]
+    assert exoprobe.file_handlers(out / av["file"]) == ["vide", "soun", "soun"]
+    assert av["key_from"].startswith("HLS playlist, cache item")
+
+
+def test_hls_audio_outside_the_videos_group_is_not_combined(tmp_path):
+    src = _write(tmp_path / "ev", _v3(_hls_items(audio_group="other")))
+    recs = exoprobe.rejoin(_one(exoprobe.find_caches(src)), tmp_path / "out")
+    assert not [r for r in recs if r.get("combined")]
+
+
+def test_an_hls_stream_stops_at_the_first_missing_segment(tmp_path):
+    src = _write(tmp_path / "ev", _v3(_hls_items(drop=("v/s2.m4s",))))
+    recs = exoprobe.rejoin(_one(exoprobe.find_caches(src)), tmp_path / "out")
+    video = next(r for r in recs if r.get("stream") and r["kind"] == "video")
+    assert (video["stream"]["segments_joined"], video["stream"]["segments_listed"], video["state"]) == (1, 3, "partial")
+
+
+def test_encrypted_or_byte_range_hls_is_not_joined(tmp_path):
+    for n, extra in enumerate(('#EXT-X-KEY:METHOD=AES-128,URI="k.key",IV=0x1\n', "#EXT-X-BYTERANGE:100@0\n")):
+        src = _write(tmp_path / f"ev{n}", _v3(_hls_items(extra_lines=extra)))
+        recs = exoprobe.rejoin(_one(exoprobe.find_caches(src)), tmp_path / f"out{n}")
+        assert not [r for r in recs if r.get("stream")]
+
+
+def test_a_transport_stream_playlist_joins_its_segments_in_order(tmp_path):
+    items = {HBASE + "ts.m3u8": b"#EXTM3U\n#EXTINF:1.0,\nts-0.ts\n#EXTINF:1.0,\nts-1.ts\n#EXT-X-ENDLIST\n",
+             HBASE + "ts-1.ts": (HLS / "ts-1.ts").read_bytes(), HBASE + "ts-0.ts": (HLS / "ts-0.ts").read_bytes()}
+    recs = exoprobe.rejoin(_one(exoprobe.find_caches(_write(tmp_path / "ev", _v3(items)))), tmp_path / "out")
+    (st,) = [r for r in recs if r.get("stream")]
+    assert st["file"].endswith("_hls.ts") and st["kind"] == "video"
+    assert (tmp_path / "out" / st["file"]).read_bytes() == (HLS / "ts-0.ts").read_bytes() + (HLS / "ts-1.ts").read_bytes()
+    assert not [r for r in recs if r.get("combined")]      # its video carries its own sound
+
+
+def test_hls_playlist_parses_a_master_and_a_media_playlist():
+    m = exoprobe.hls_playlist(_hls_items()[HBASE + "master.m3u8"].decode(), HBASE + "master.m3u8")
+    assert m["kind"] == "master" and m["variants"][0]["uri"] == HBASE + "v/video.m3u8"
+    assert [(a["lang"], a["group"], a["uri"]) for a in m["audio"]] == [("en", "aud", HBASE + "a/en.m3u8"),
+                                                                        ("es", "aud", HBASE + "a/es.m3u8")]
+    v = exoprobe.hls_playlist(_hls_items()[HBASE + "v/video.m3u8"].decode(), HBASE + "v/video.m3u8")
+    assert v["init"] == HBASE + "v/init.mp4" and v["segments"][0] == HBASE + "v/s1.m4s" and v["joinable"]
+    assert exoprobe.hls_playlist("not a playlist", HBASE) is None
+
+
+def test_an_hls_variant_with_its_own_sound_is_not_combined_with_the_audio_group(tmp_path):
+    """A transport-stream variant carries video and sound together, so the master's
+    audio renditions are alternatives to it, not a missing track."""
+    items = _hls_items(drop=("v/init.mp4", "v/s1.m4s", "v/s2.m4s", "v/s3.m4s"))
+    items[HBASE + "v/video.m3u8"] = b"#EXTM3U\n#EXTINF:1.0,\nts-0.ts\n#EXTINF:1.0,\nts-1.ts\n#EXT-X-ENDLIST\n"
+    items[HBASE + "v/ts-0.ts"] = (HLS / "ts-0.ts").read_bytes()
+    items[HBASE + "v/ts-1.ts"] = (HLS / "ts-1.ts").read_bytes()
+    recs = exoprobe.rejoin(_one(exoprobe.find_caches(_write(tmp_path / "ev", _v3(items)))), tmp_path / "out")
+    assert any(r.get("stream") and r["file"].endswith("_hls.ts") for r in recs)
+    assert not [r for r in recs if r.get("combined")]
+
+
+def test_a_subtitles_playlist_is_not_joined_as_a_stream(tmp_path):
+    """Twitter caches WebVTT subtitles through an HLS media playlist too; text is not a
+    stream to join."""
+    items = {HBASE + "s0/sub.m3u8": b"#EXTM3U\n#EXTINF:7.0,\nsub.vtt\n#EXT-X-ENDLIST\n",
+             HBASE + "s0/sub.vtt": b"WEBVTT\n\n00:00:00.033 --> 00:00:07.040\nHello\n"}
+    recs = exoprobe.rejoin(_one(exoprobe.find_caches(_write(tmp_path / "ev", _v3(items)))), tmp_path / "out")
+    assert not [r for r in recs if r.get("stream")]
