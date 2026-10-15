@@ -37,6 +37,18 @@ when the app's evictor asks ExoPlayer to track reads; a cache that also keeps an
 `ExoPlayerCacheFileMetadata` table records later reads there and leaves the name
 alone (`SimpleCache.touchSpan`).
 
+## In a window
+
+```
+python3 exoprobe_gui.py
+```
+
+`exoprobe_gui.py` is an optional tkinter window over the same command line, standard
+library only. Choose an evidence folder, then **Scan** to see its caches and items as a
+tree, or **Rejoin** into an output folder and double-click a file to open it. **Mux...**
+asks for a video, its audio and an output file. The window runs `exoprobe.py` and shows
+what it prints, so the results are the same either way.
+
 ## What it reads
 
 - **Pieces**, `<id>.<position>.<timestamp>.v3.exo` in subfolders `0` to `9` of the
@@ -118,14 +130,16 @@ pointing at the bytes it pointed at before.
 
 ## Standalone executables
 
-Each release carries `exoprobe` built as a single executable with PyInstaller on
+Each release carries `exoprobe` and its window `exoprobe_gui` built as single executables with PyInstaller on
 Python 3.14, for Windows x64 and arm64, macOS on Apple silicon and Intel, and Linux x64
 and arm64, beside `exoprobe.py` itself. The workflow that builds them
 (`.github/workflows/build-executables.yml`) runs each executable on caches built the way
 ExoPlayer writes them (a DASH stream, an HLS stream with two audio renditions, and an
 item indexed in `exoplayer_internal.db`) and on the mux fixtures, and requires it to
 write the same bytes as `python exoprobe.py` for `scan`, `rejoin` and `mux` before it is
-packaged with `SHA256SUMS.txt` and a README. The executables are not code signed; the
+packaged with `SHA256SUMS.txt` and a README. The window re-enters itself with `--cli`
+to run the tool; the workflow runs the same comparison through that call and checks the
+window starts and stays up. The executables are not code signed; the
 README inside each archive says what Windows SmartScreen and macOS Gatekeeper will ask.
 
 ## Licence

@@ -12,7 +12,13 @@ exoprobe, built as a standalone executable
                       holding an extracted Android file system, or any part of
                       one that holds an ExoPlayer cache.
 
-  SHA256SUMS.txt      the hash of the executable as built. Check it with
+  exoprobe_gui        the same tool in a window (exoprobe_gui.exe on Windows,
+                      exoprobe_gui.app on macOS). Choose the evidence folder,
+                      then Scan to see its caches, or Rejoin into an output
+                      folder; Mux puts a video and its audio in one file.
+                      Double-click a rejoined file to open it.
+
+  SHA256SUMS.txt      the hashes of the executables as built. Check them with
                           certutil -hashfile exoprobe.exe SHA256     (Windows)
                           shasum -a 256 -c SHA256SUMS.txt            (macOS)
                           sha256sum -c SHA256SUMS.txt                (Linux)
