@@ -50,8 +50,8 @@ asks for a video, its audio and an output file. The window runs `exoprobe.py` an
 what it prints, so the results are the same either way.
 
 It needs `exoprobe_theme.py` beside it (colours and the header, also standard library). The
-logo comes from `assets/`; without that folder the window opens with no logo. It starts in
-the system's light or dark mode, and the switch in its header changes it for that session.
+logo comes from `assets/`; without that folder the window opens with no logo. It starts in the system's light or dark mode where it can read it (macOS, Windows, and
+GNOME's setting on Linux), otherwise light, and the switch in its header changes it for that session.
 
 ## What it reads
 
