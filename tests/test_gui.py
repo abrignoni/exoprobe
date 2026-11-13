@@ -51,5 +51,5 @@ def test_hidden_window_rejoins_what_the_command_line_rejoins(evidence, tmp_path)
     assert result.returncode == 0, result.stderr
     assert run(str(ROOT / "exoprobe.py"), "rejoin", str(evidence), "-o", str(tmp_path / "cli")).returncode == 0
     written = tree(tmp_path / "window")
-    assert json.loads(result.stdout.strip().splitlines()[-1]) == {"exit": 0, "files": len(written)}
+    assert json.loads(result.stdout.strip().splitlines()[-1]) == {"exit": 0, "files": len(written), "logo": True, "icon": True}
     assert written == tree(tmp_path / "cli")
