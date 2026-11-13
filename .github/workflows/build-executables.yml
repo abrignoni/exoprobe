@@ -89,9 +89,17 @@ jobs:
 
       - name: Build the window executable
         working-directory: src
-        run: >
-          pyinstaller --noconfirm --clean --onefile --windowed
-          --name exoprobe_gui --hidden-import exoprobe exoprobe_gui.py
+        shell: bash
+        run: |
+          # the logo and icons travel inside the build; the program icon is per system
+          case "$RUNNER_OS" in
+            Windows) icon=assets/exoprobe.ico ;;
+            macOS) icon=assets/exoprobe.icns ;;
+            *) icon=NONE ;;
+          esac
+          pyinstaller --noconfirm --clean --onefile --windowed \
+            --name exoprobe_gui --hidden-import exoprobe --hidden-import exoprobe_theme \
+            --add-data "assets:assets" --icon "$icon" exoprobe_gui.py
 
       - name: Check the executable writes what the source writes
         shell: bash
@@ -122,6 +130,25 @@ jobs:
               p.terminate()
           print("gui process alive after 20 s:", alive, "| exit code:", p.poll())
           assert alive, "exoprobe_gui exited early"
+
+      - name: Check the window rejoins a cache with its logo and icon
+        shell: python
+        run: |
+          import json, os, subprocess, sys, tempfile
+          from pathlib import Path
+          sys.path.insert(0, os.path.join("ci", "tools"))
+          import smoke_frozen
+          work = Path(tempfile.mkdtemp())
+          smoke_frozen.build_evidence(Path("src").resolve(), work / "evidence")
+          ext = ".exe" if os.name == "nt" else ""
+          cmd = [os.path.join("src", "dist", "exoprobe_gui" + ext), "--smoke", str(work / "evidence"), str(work / "out")]
+          if sys.platform.startswith("linux"):
+              cmd = ["xvfb-run", "-a"] + cmd
+          done = subprocess.run(cmd, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL)
+          print(done.stdout[-2000:], done.stderr[-2000:])
+          outcome = json.loads(done.stdout.strip().splitlines()[-1])
+          assert done.returncode == 0 and outcome["exit"] == 0 and outcome["files"] > 0, outcome
+          assert outcome["logo"] and outcome["icon"], "the window has no logo or no icon"
 
       - name: Package
         shell: bash
@@ -182,9 +209,9 @@ jobs:
 
       - name: Checksums of the archives and the source file
         run: |
-          cp src/exoprobe.py src/exoprobe_gui.py artifacts/
-          cd artifacts && sha256sum exoprobe-* exoprobe.py exoprobe_gui.py > SHA256SUMS.txt && cat SHA256SUMS.txt
-          test "$(wc -l < SHA256SUMS.txt)" -eq 8
+          cp src/exoprobe.py src/exoprobe_gui.py src/exoprobe_theme.py artifacts/
+          cd artifacts && sha256sum exoprobe-* exoprobe.py exoprobe_gui.py exoprobe_theme.py > SHA256SUMS.txt && cat SHA256SUMS.txt
+          test "$(wc -l < SHA256SUMS.txt)" -eq 9
 
       - name: Create the release
         env:

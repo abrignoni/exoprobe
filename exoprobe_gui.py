@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """exoprobe GUI: a tkinter window over exoprobe.py.
 
-Standard library only, like the tool it drives. The window runs the command line
+Standard library only, like the tool it drives. Its colours, header and logo come
+from exoprobe_theme.py and assets/ beside it (the logo is left out when assets/ is
+missing). The window runs the command line
 tool as a subprocess with the same options it takes, so what it shows is what the
 command line prints:
 
@@ -33,6 +35,7 @@ import threading
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import exoprobe  # noqa: E402  pylint: disable=wrong-import-position
+import exoprobe_theme  # noqa: E402  pylint: disable=wrong-import-position
 
 TITLE = "exoprobe"
 
@@ -81,51 +84,62 @@ def build_window(initial_folder="", smoke=None):
 
     root = tk.Tk()
     root.title(f"{TITLE} {exoprobe.__version__}")
-    root.geometry("960x660")
-    root.minsize(740, 500)
+    root.geometry("1000x720")
+    root.minsize(760, 540)
     if smoke:
         root.attributes("-alpha", 0.0)
-    state = {"proc": None, "streams": 0, "mode": None, "result": None, "output": "", "cache": ""}
+    theme = exoprobe_theme.Theme(root)
+    theme.apply(exoprobe_theme.system_dark())
+    assets = exoprobe_theme.assets_dir(HERE)
+    state = {"proc": None, "streams": 0, "mode": None, "result": None, "output": "", "cache": "",
+             "icon": exoprobe_theme.window_icon(root, assets, TITLE)}
     lines = queue.Queue()
 
-    form = ttk.Frame(root, padding=8)
-    form.pack(fill="x")
+    head, _right = theme.header(root, TITLE, f"{exoprobe.__version__}   ExoPlayer media caches",
+                                logo_folder=assets, on_mode=theme.apply)
+    head.pack(fill="x")
+    state["logo"] = theme.logo is not None
+    page = ttk.Frame(root, padding=(18, 14, 18, 16))
+    page.pack(fill="both", expand=True)
+
+    card, form = theme.card(page)
+    card.pack(fill="x")
     v_folder = tk.StringVar(value=initial_folder)
     v_output = tk.StringVar()
     v_combine = tk.BooleanVar(value=True)
     for row, (label, var, hint) in enumerate((
             ("Evidence folder", v_folder, "an extracted Android file system, or the part holding a cache"),
             ("Output folder", v_output, "for Rejoin; choose a new or empty folder"))):
-        ttk.Label(form, text=label).grid(row=row, column=0, sticky="w", padx=(0, 6), pady=2)
-        ttk.Entry(form, textvariable=var).grid(row=row, column=1, sticky="ew", pady=2)
+        ttk.Label(form, text=label, style="Card.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 10), pady=3)
+        ttk.Entry(form, textvariable=var).grid(row=row, column=1, sticky="ew", pady=3)
         ttk.Button(form, text="Browse...",
                    command=lambda v=var, t=label: v.set(filedialog.askdirectory(title=t) or v.get())
-                   ).grid(row=row, column=2, padx=(6, 0), pady=2)
-        ttk.Label(form, text=hint, foreground="gray").grid(row=row, column=3, sticky="w", padx=(8, 0))
-    ttk.Checkbutton(form, text="Put video and audio in one file", variable=v_combine
-                    ).grid(row=2, column=1, sticky="w", pady=(2, 0))
+                   ).grid(row=row, column=2, padx=(8, 0), pady=3)
+        ttk.Label(form, text=hint, style="CardMuted.TLabel").grid(row=row, column=3, sticky="w", padx=(10, 0))
+    ttk.Checkbutton(form, text="Put video and audio in one file", variable=v_combine, style="Card.TCheckbutton"
+                    ).grid(row=2, column=1, sticky="w", pady=(4, 0))
     form.columnconfigure(1, weight=1)
 
-    buttons = ttk.Frame(root, padding=(8, 0))
-    buttons.pack(fill="x")
+    buttons = ttk.Frame(page)
+    buttons.pack(fill="x", pady=(14, 0))
     b_scan = ttk.Button(buttons, text="Scan")
-    b_rejoin = ttk.Button(buttons, text="Rejoin")
+    b_rejoin = ttk.Button(buttons, text="Rejoin", style="Primary.TButton")
     b_mux = ttk.Button(buttons, text="Mux...")
     b_cancel = ttk.Button(buttons, text="Cancel", state="disabled")
     b_open = ttk.Button(buttons, text="Open output", state="disabled")
     actions = (b_scan, b_rejoin, b_mux)
-    for button in actions + (b_cancel, b_open):
-        button.pack(side="left", padx=(0, 6))
+    for button in (b_rejoin, b_scan, b_mux, b_cancel, b_open):
+        button.pack(side="left", padx=(0, 8))
 
-    status_bar = ttk.Frame(root, padding=(8, 6))
-    status_bar.pack(fill="x")
+    status_bar = ttk.Frame(page)
+    status_bar.pack(fill="x", pady=(12, 10))
     progress = ttk.Progressbar(status_bar, mode="indeterminate")
     progress.pack(side="left", fill="x", expand=True)
-    status = ttk.Label(status_bar, text="Choose an evidence folder.", width=40)
-    status.pack(side="left", padx=(8, 0))
+    status = ttk.Label(status_bar, text="Choose an evidence folder.", width=40, style="Muted.TLabel")
+    status.pack(side="left", padx=(12, 0))
 
-    panes = ttk.PanedWindow(root, orient="vertical")
-    panes.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+    panes = ttk.PanedWindow(page, orient="vertical")
+    panes.pack(fill="both", expand=True)
     tree_frame = ttk.Frame(panes)
     tree = ttk.Treeview(tree_frame, columns=("detail",))
     tree.heading("#0", text="cache / item / file")
@@ -136,7 +150,8 @@ def build_window(initial_folder="", smoke=None):
     tree.configure(yscrollcommand=scroll.set)
     tree.pack(side="left", fill="both", expand=True)
     scroll.pack(side="left", fill="y")
-    log = tk.Text(panes, height=8, wrap="none", state="disabled")
+    log = tk.Text(panes, height=8, wrap="none", state="disabled", padx=10, pady=8)
+    theme.apply(theme.dark)   # colours the Text made after the first apply
     panes.add(tree_frame, weight=3)
     panes.add(log, weight=1)
 
@@ -273,7 +288,7 @@ def build_window(initial_folder="", smoke=None):
             status["text"] = "cancelled"
         else:
             status["text"] = f"exoprobe exited {code}"
-        state["result"] = (code, count)
+        state["result"] = (code, count, state["logo"], state["icon"])
         if smoke:
             root.after(10, root.destroy)
 
@@ -316,8 +331,9 @@ def main(argv):
         if len(argv) != 3:
             print("usage: exoprobe_gui.py --smoke FOLDER OUTPUT", file=sys.stderr)
             return 2
-        code, files = build_window(smoke=(os.path.abspath(argv[1]), os.path.abspath(argv[2]))) or (None, 0)
-        print(json.dumps({"exit": code, "files": files}))
+        code, files, logo, icon = (build_window(smoke=(os.path.abspath(argv[1]), os.path.abspath(argv[2])))
+                                   or (None, 0, False, False))
+        print(json.dumps({"exit": code, "files": files, "logo": logo, "icon": icon}))
         return 0 if code == 0 else 1
     build_window(os.path.abspath(argv[0]) if argv and os.path.isdir(argv[0]) else "")
     return 0

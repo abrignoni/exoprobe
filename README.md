@@ -49,6 +49,10 @@ tree, or **Rejoin** into an output folder and double-click a file to open it. **
 asks for a video, its audio and an output file. The window runs `exoprobe.py` and shows
 what it prints, so the results are the same either way.
 
+It needs `exoprobe_theme.py` beside it (colours and the header, also standard library). The
+logo comes from `assets/`; without that folder the window opens with no logo. It starts in
+the system's light or dark mode, and the switch in its header changes it for that session.
+
 ## What it reads
 
 - **Pieces**, `<id>.<position>.<timestamp>.v3.exo` in subfolders `0` to `9` of the
