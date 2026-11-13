@@ -69,7 +69,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable, NamedTuple
 from urllib.parse import quote, urljoin
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 # ---- names ------------------------------------------------------------------
 
