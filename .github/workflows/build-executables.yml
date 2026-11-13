@@ -97,9 +97,11 @@ jobs:
             macOS) icon=assets/exoprobe.icns ;;
             *) icon=NONE ;;
           esac
+          # (a tag from before the window had a logo has no assets folder)
+          extra=(); [ -d assets ] && extra=(--add-data "assets:assets" --icon "$icon")
           pyinstaller --noconfirm --clean --onefile --windowed \
             --name exoprobe_gui --hidden-import exoprobe --hidden-import exoprobe_theme \
-            --add-data "assets:assets" --icon "$icon" exoprobe_gui.py
+            "${extra[@]}" exoprobe_gui.py
 
       - name: Check the executable writes what the source writes
         shell: bash
@@ -135,6 +137,8 @@ jobs:
         shell: python
         run: |
           import json, os, subprocess, sys, tempfile
+          if not os.path.isdir(os.path.join("src", "assets")):
+              sys.exit(print("this source is from before the window had a logo; nothing to check"))
           from pathlib import Path
           sys.path.insert(0, os.path.join("ci", "tools"))
           import smoke_frozen
@@ -209,9 +213,10 @@ jobs:
 
       - name: Checksums of the archives and the source file
         run: |
-          cp src/exoprobe.py src/exoprobe_gui.py src/exoprobe_theme.py artifacts/
-          cd artifacts && sha256sum exoprobe-* exoprobe.py exoprobe_gui.py exoprobe_theme.py > SHA256SUMS.txt && cat SHA256SUMS.txt
-          test "$(wc -l < SHA256SUMS.txt)" -eq 9
+          cp src/exoprobe.py src/exoprobe_gui.py artifacts/
+          [ ! -f src/exoprobe_theme.py ] || cp src/exoprobe_theme.py artifacts/   # (not in tags from before the window's theme)
+          cd artifacts && sha256sum exoprobe-* exoprobe*.py > SHA256SUMS.txt && cat SHA256SUMS.txt
+          test "$(wc -l < SHA256SUMS.txt)" -eq "$(( 6 + $(ls exoprobe*.py | wc -l) ))"
 
       - name: Create the release
         env:
